@@ -1,0 +1,11 @@
+#Directories to ignore
+data/
+
+
+# Python
+__pychache__
+*.pyc
+*.simg
+*.sif
+*.log 
+*.out
