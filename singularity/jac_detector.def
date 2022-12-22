@@ -1,0 +1,23 @@
+Bootstrap: docker
+From: pytorch/pytorch:1.13.1-cuda11.6-cudnn8-runtime
+
+%files
+    ./archs.py /gift/
+    ./entrypoint.py /gift/
+    ./utils /gift/
+    ./detection /gift/
+    ./config /gift/
+    ./config/metaparameters.json /
+    ./config/metaparameters_schema.json /
+    ./learned_parameters /
+
+%post
+    apt update
+   
+    pip install --upgrade pip
+    pip install tqdm jsonschema jsonargparse scikit-learn joblib
+
+
+%runscript
+    exec python3 /gift/entrypoint.py "$@"
+
