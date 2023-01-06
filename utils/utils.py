@@ -48,3 +48,15 @@ def compute_jacobian(model, image):
 
     del y_onehot, one, output
     return np.stack(jacobian, axis=0)
+
+
+def norm_feat(feat, kind= "normalize"):
+    # import pdb; pdb.set_trace()
+    feat = np.array(feat)
+
+    if kind == "standardize":
+        return (feat - feat.mean())/feat.std()
+    elif kind == "normalize":
+        return  (feat - feat.min())/(feat.max()- feat.min())
+    else:
+        return  feat/feat.max()

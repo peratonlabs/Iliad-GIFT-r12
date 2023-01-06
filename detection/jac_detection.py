@@ -1,6 +1,7 @@
 import os
 import json
 import torch
+import logging
 import pickle
 import numpy as np
 from utils import utils
@@ -25,11 +26,44 @@ class JACDetector(AbstractDetector):
         self.metaparameter_filepath = metaparameter_filepath
         # self.scale_parameters_filepath = scale_parameters_filepath
         self.learned_parameters_dirpath = learned_parameters_dirpath
+        self.default_metaparameters = json.load(open(metaparameter_filepath, "r"))
+
+
+
+    def write_metaparameters(self, metaparameters):
+        with open(self.learned_parameters_dirpath, "w") as fp:
+            json.dump(metaparameters, fp)
+
+
+
 
 
     def automatic_configure(self, models_dirpath):
-        #TODO: will implement this method later
-        return 
+
+        """
+        A function to automatically re-configure the detector by performing a grid search on a preset range of meta-parameters. 
+        This function should automatically change the meta-parameters, call manual_configure and output a new meta-parameters.json 
+        file (in the learned_parameters folder) when optimal meta-parameters are found.
+
+        """
+
+        scratch_dirpath = self.arg_dict["scratch_dirpath"]
+        results_dir = os.path.join(scratch_dirpath, 'jac_results')
+
+        if not os.path.exists(results_dir):
+            self.manual_configure(models_dirpath)
+        max_depth_options = range(3, 11)
+        opt_max_depth = hpsearch(results_dir,max_depth_options)
+        modified_metaparameters = self.default_metaparameters.copy()
+        modified_metaparameters["max_dept"] = opt_max_depth
+        self.write_metaparameters(modified_metaparameters)
+    
+
+
+
+
+
+    
 
     
     def infer(
@@ -71,9 +105,6 @@ class JACDetector(AbstractDetector):
         metaparameters = json.load(open(self.metaparameter_filepath, "r"))
 
         modelList = sorted(os.listdir(models_dirpath))
-        # model_filepaths = [os.path.join(models_dirpath, modeldir, 'model.pt') for modeldir in modeldirs]
-        
-        # 
 
         x = []
         y = []
@@ -88,11 +119,6 @@ class JACDetector(AbstractDetector):
         os.makedirs(results_dir, exist_ok=True)
 
 
-        # if scratch is not None and os.path.exists(scratch):
-        #     with open(scratch,'rb') as f:
-        #         xsv = pickle.load(f)
-        # else:
-        #     xsv = {}
         for model_id in modelList:
             print("Current model: ", model_id)
             model_result = None
@@ -116,7 +142,7 @@ class JACDetector(AbstractDetector):
                 with open(res_path, "wb") as f:
                     pickle.dump(model_result, f)
 
-            x.append(model_result["features"])
+            x.append(utils.norm_feat(model_result["features"], kind ="regular"))
             y.append(model_result["cls"])
 
         x = np.stack(x, 0)
@@ -140,7 +166,7 @@ class JACDetector(AbstractDetector):
             ytr = y[ind[:split]]
             yv = y[ind[split:]]
 
-            model = RandomForestClassifier(n_estimators=metaparameters["train_random_forest_regressor_param_n_estimators"])
+            model = RandomForestClassifier(n_estimators=metaparameters["train_random_forest_classifier_param_n_estimators"], max_depth = metaparameters["train_random_forest_classifier_param_max_depth"] )
             model.fit(xtr, ytr)
             pv = model.predict_proba(xv)
             pv = pv[:, 1]
@@ -181,7 +207,7 @@ class JACDetector(AbstractDetector):
             ISOce_scores.append(log_loss(ytst, p2tst))
         print('post-cal ce (ISO): ', np.mean(ISOce_scores))
 
-        rf_model = RandomForestClassifier(n_estimators=metaparameters["train_random_forest_regressor_param_n_estimators"])
+        rf_model = RandomForestClassifier(n_estimators=metaparameters["train_random_forest_classifier_param_n_estimators"], max_depth = metaparameters["train_random_forest_classifier_param_max_depth"])
         rf_model.fit(x, y)
         rf_scores = np.concatenate(rf_scores)
         rf_sample_y = np.concatenate(truths)
@@ -205,4 +231,5 @@ def get_jac_feats(model_filepath, nsamples=1000, input_scale=1.0):
     input_sz = model.parameters().__next__().shape[1]
     inputs = input_scale*torch.randn([nsamples,1,input_sz],device=device)
     jacobian = utils.compute_jacobian(model, inputs)
+    # import pdb; pdb.set_trace()
     return jacobian.mean(axis=1).reshape(-1)
