@@ -60,3 +60,55 @@ def norm_feat(feat, kind= "normalize"):
         return  (feat - feat.min())/(feat.max()- feat.min())
     else:
         return  feat/feat.max()
+
+
+def get_layer_stats(x):
+    return [np.mean(x), np.std(x), np.min(x), np.max(x)]
+
+def get_layer_stats_vectorized_mean(model_filepath, whichLayer = "firstLast"): 
+    model = torch.load(model_filepath)
+    if  whichLayer == "firstLast":
+        params = [p.cpu().detach().numpy().reshape(-1)  for name, p in model.named_parameters() if "bias" not in name]
+        params_sub = [params[0], params[-1]]
+        res = np.array(list(map(get_layer_stats, params_sub)))
+        return res.mean(axis = 0)
+    elif  whichLayer == "justweights":
+        params = [p.cpu().detach().numpy().reshape(-1)  for name, p in model.named_parameters() if "bias" not in name]
+        res = np.array(list(map(get_layer_stats, params)))
+        return res.mean(axis = 0)
+    else:
+        params = [p.cpu().detach().numpy().reshape(-1) for p in model.parameters()]
+        res = np.array(list(map(get_layer_stats, params)))
+    return res.mean(axis = 0)
+
+
+
+def get_layer_stats_vectorized(model_filepath, whichLayer = "firstLast"): 
+    archMap = {'Net2':0, 'Net3':1, 'Net4':2, 'Net5':3, 'Net6':4 , 'Net7':5 }
+    model = torch.load(model_filepath)
+    archName = str(type(model)).split(".")[1][:4]
+    archType = archMap[archName]
+
+
+    if  whichLayer == "firstLast":
+        params = [p.cpu().detach().numpy().reshape(-1)  for name, p in model.named_parameters() if "bias" not in name]
+        params_extracted = [params[0], params[-1]]
+    elif  whichLayer == "justweights":
+        params_extracted = [p.cpu().detach().numpy().reshape(-1)  for name, p in model.named_parameters() if "bias" not in name]
+    elif whichLayer=="all":
+        params_extracted = [p.cpu().detach().numpy().reshape(-1) for p in model.parameters()]
+    else:
+        raise ValueError("please specify which layers to use!")
+    weight_stats = np.concatenate(np.array(list(map(get_layer_stats, params_extracted))), axis = 0)
+    res_modeltype = np.concatenate([[archType], weight_stats], axis = 0)
+    # print("Model type: ", archType)
+    return res_modeltype
+  
+def get_quants(x, n):
+    """
+    :param x:
+    :param n:
+    :return:
+    """
+    q = np.linspace(0, 1, n)
+    return np.quantile(x, q)

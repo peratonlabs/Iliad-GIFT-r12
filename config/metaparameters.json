@@ -1,8 +1,8 @@
 {
-	"train_random_forest_classifier_param_n_estimators": 1000,
-	"train_random_forest_classifier_param_max_depth": 10,
-	"train_nsamples":100000,
-	"train_holdoutratio": 0.2
+	"train_nq": 25,
+	"train_C": 21,
+	"train_nsamples":10000,
+	"train_holdoutratio": 0.1
 }
 
 

@@ -2,29 +2,29 @@
     "$schema": "http://json-schema.org/draft-07/schema#",
     "title": "PL-GIFT Algorithm Meta-Parameters",
     "technique": "Jacobian Detector",
-    "technique_description": "Extracts model jacobian and trains a random forest regressor.",
-    "technique_changes": "Initial implementation for round 12",
+    "technique_description": "Extracts model jacobian and trains a LogisticRegression classifier.",
+    "technique_changes": "Changed the classifier form RandomForest ot LogisticRegression; Added weight statistics",
     "commit_id": "eec06ab865ef8ad363b182dd70eabc539ed7e05b",
     "repo_name": "https://github.com/plgift/r12",
     "required": [],
     "additionalProperties": false,
     "type": "object",
     "properties": {
-      "train_random_forest_classifier_param_n_estimators": {
-          "description": "Number of trees to use in the forest.",
+        "train_nq": {
+            "description": "number or sequence of quantiles to compute",
+            "type": "integer",
+            "minimum": 4,
+            "maximum": 100,
+            "suggested_minimum": 18,
+            "suggested_maximum": 100
+        },
+      "train_C": {
+          "description": "Inverse of regularization to use in the LogisticRegression.",
           "type": "integer",
-          "minimum": 1,
-          "maximum": 20000,
-          "suggested_minimum": 75,
-          "suggested_maximum": 20000
-      },
-      "train_random_forest_classifier_param_max_depth": {
-          "description": "The maximum depth of the tree",
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 20,
-          "suggested_minimum": 1,
-          "suggested_maximum": 20
+          "minimum": 0.1,
+          "maximum": 100,
+          "suggested_minimum": 10,
+          "suggested_maximum": 100
       },
       "train_nsamples": {
         "description": "The number of random input samples to use to generate the jacobian.",

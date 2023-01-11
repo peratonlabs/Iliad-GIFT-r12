@@ -8,8 +8,10 @@ from utils import utils
 from joblib import dump, load
 from utils.abstract import AbstractDetector
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import roc_auc_score, log_loss
 from sklearn.isotonic import IsotonicRegression
+from utils import hpsearch
 
 
 class JACDetector(AbstractDetector):
@@ -52,18 +54,14 @@ class JACDetector(AbstractDetector):
 
         if not os.path.exists(results_dir):
             self.manual_configure(models_dirpath)
-        max_depth_options = range(3, 11)
-        opt_max_depth = hpsearch(results_dir,max_depth_options)
+        C_options =  list(range(1,28))
+        opt_C = hpsearch.hpsearch_C(C_options, results_dir)
         modified_metaparameters = self.default_metaparameters.copy()
-        modified_metaparameters["max_dept"] = opt_max_depth
+        modified_metaparameters["train_C"] = opt_C
         self.write_metaparameters(modified_metaparameters)
     
 
 
-
-
-
-    
 
     
     def infer(
@@ -76,7 +74,10 @@ class JACDetector(AbstractDetector):
     ):
         metaparameters = json.load(open(self.metaparameter_filepath, "r"))
         basepath = self.arg_dict["gift_basepath"]
-        feats = get_jac_feats(model_filepath, nsamples=metaparameters["train_nsamples"])
+        feats_jac = get_jac_feats(model_filepath, nsamples=metaparameters["train_nsamples"])
+        feats_ws  = utils.get_layer_stats_vectorized(model_filepath, whichLayer = "justweights")
+        feats_ws = utils.get_quants(feats_ws, metaparameters["train_nq"])
+        feats = np.concatenate([feats_ws,feats_jac], axis = 0)
 
         rf_path = os.path.join(self.learned_parameters_dirpath, "cv_rf.joblib") 
         rf_path = os.path.join(basepath, rf_path)
@@ -101,6 +102,7 @@ class JACDetector(AbstractDetector):
         if not os.path.exists(self.learned_parameters_dirpath):
             os.makedirs(self.learned_parameters_dirpath)
 
+
         num_cv_trials = self.arg_dict['num_cv_trials']
         metaparameters = json.load(open(self.metaparameter_filepath, "r"))
 
@@ -110,8 +112,9 @@ class JACDetector(AbstractDetector):
         y = []
 
         jac_dets= str(metaparameters)
+        nq = metaparameters["train_nq"]
+        C = metaparameters["train_C"]
 
-        # import pdb;pdb.set_trace()
         scratch_dirpath = self.arg_dict["scratch_dirpath"]
         holdoutratio = metaparameters["train_holdoutratio"]
 
@@ -120,12 +123,10 @@ class JACDetector(AbstractDetector):
 
 
         for model_id in modelList:
-            print("Current model: ", model_id)
+            # print("Current model: ", model_id)
             model_result = None
             curr_model_dirpath = os.path.join(models_dirpath, model_id)
 
-                
-                
             res_path = os.path.join(results_dir, model_id + '.p')
             if os.path.exists(res_path):
                 with open(res_path, 'rb') as f:
@@ -135,8 +136,12 @@ class JACDetector(AbstractDetector):
             # import pdb; pdb.set_trace()
             if model_result is None:
                 print('getting feats from', model_id)
-                feats = get_jac_feats(os.path.join(curr_model_dirpath, 'model.pt'), nsamples=metaparameters["train_nsamples"])
+                model_filepath = os.path.join(curr_model_dirpath, 'model.pt')
+                feats_jac = get_jac_feats(model_filepath, nsamples=metaparameters["train_nsamples"])
+                feats_ws  = utils.get_layer_stats_vectorized(model_filepath, whichLayer = "justweights")
+                feats_ws = utils.get_quants(feats_ws, nq)
                 cls = utils.get_class_r12(os.path.join(curr_model_dirpath, 'config.json'))
+                feats = np.concatenate([feats_ws,feats_jac], axis = 0)
 
                 model_result = {"jac_dets": jac_dets, 'cls': cls, 'features': feats}
                 with open(res_path, "wb") as f:
@@ -152,7 +157,7 @@ class JACDetector(AbstractDetector):
         truths = []
 
         rocList = []
-
+        
 
         numSample = num_cv_trials
         for _ in range(numSample):
@@ -166,30 +171,29 @@ class JACDetector(AbstractDetector):
             ytr = y[ind[:split]]
             yv = y[ind[split:]]
 
-            model = RandomForestClassifier(n_estimators=metaparameters["train_random_forest_classifier_param_n_estimators"], max_depth = metaparameters["train_random_forest_classifier_param_max_depth"] )
+            model = LogisticRegression(max_iter=1000, C=C)
             model.fit(xtr, ytr)
             pv = model.predict_proba(xv)
             pv = pv[:, 1]
 
-            vroc = roc_auc_score(yv, pv)
-            vkld = log_loss(yv, pv)
-            
             rf_scores.append(pv)
             truths.append(yv)
-            rocList.append(vroc)
-
-            print('val auc:', vroc, 'pre-cal ce:', vkld)
+    
+            try:
+                print(roc_auc_score(yv, pv), log_loss(yv, pv))
+                vroc = roc_auc_score(yv, pv)
+                rocList.append(vroc)
+            except:
+                print('AUC error (probably due to class balance)')
         print('avg auc: ', np.mean(rocList))
 
-
-
-            
+  
 
         rf_scores = np.array(rf_scores)
         truths = np.array(truths)
         
         ISOce_scores = []
-        for _ in range(10):
+        for _ in range(100):
             ind = np.arange(len(rf_scores))
             np.random.shuffle(ind)
             split = round(len(rf_scores) * (1-holdoutratio))
@@ -207,7 +211,7 @@ class JACDetector(AbstractDetector):
             ISOce_scores.append(log_loss(ytst, p2tst))
         print('post-cal ce (ISO): ', np.mean(ISOce_scores))
 
-        rf_model = RandomForestClassifier(n_estimators=metaparameters["train_random_forest_classifier_param_n_estimators"], max_depth = metaparameters["train_random_forest_classifier_param_max_depth"])
+        rf_model = LogisticRegression(max_iter=1000, C=C)
         rf_model.fit(x, y)
         rf_scores = np.concatenate(rf_scores)
         rf_sample_y = np.concatenate(truths)
@@ -215,8 +219,6 @@ class JACDetector(AbstractDetector):
         ir_model.fit(rf_scores, rf_sample_y)
         dump(rf_model, os.path.join(self.arg_dict['learned_parameters_dirpath'], 'cv_rf.joblib'))
         dump(ir_model, os.path.join(self.arg_dict['learned_parameters_dirpath'], 'cv_ir.joblib'))
-
-
 
 
 
@@ -231,5 +233,4 @@ def get_jac_feats(model_filepath, nsamples=1000, input_scale=1.0):
     input_sz = model.parameters().__next__().shape[1]
     inputs = input_scale*torch.randn([nsamples,1,input_sz],device=device)
     jacobian = utils.compute_jacobian(model, inputs)
-    # import pdb; pdb.set_trace()
     return jacobian.mean(axis=1).reshape(-1)
