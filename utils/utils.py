@@ -50,12 +50,14 @@ def compute_jacobian(model, image):
     return np.stack(jacobian, axis=0)
 
 
-def norm_feat(feat, kind= "normalize"):
+def norm_feat(feat, kind= ""):
     # import pdb; pdb.set_trace()
     feat = np.array(feat)
 
     if kind == "standardize":
         return (feat - feat.mean())/feat.std()
+    elif kind=="std":
+        return feat/feat.std()
     elif kind == "normalize":
         return  (feat - feat.min())/(feat.max()- feat.min())
     else:
@@ -101,9 +103,44 @@ def get_layer_stats_vectorized(model_filepath, whichLayer = "firstLast"):
         raise ValueError("please specify which layers to use!")
     weight_stats = np.concatenate(np.array(list(map(get_layer_stats, params_extracted))), axis = 0)
     res_modeltype = np.concatenate([[archType], weight_stats], axis = 0)
+
+
+  
+
+def get_layer_weights_vectorized(model_filepath, whichLayer = "firstLast"): 
+    archMap = {'Net2':0, 'Net3':1, 'Net4':2, 'Net5':3, 'Net6':4 , 'Net7':5 }
+    model = torch.load(model_filepath)
+    archName = str(type(model)).split(".")[1][:4]
+    archType = archMap[archName]
+
+
+    if  whichLayer == "firstLast":
+        params = [p.cpu().detach().numpy().reshape(-1)  for name, p in model.named_parameters() if "bias" not in name]
+        params_extracted = [params[0], params[-1]]
+    elif  whichLayer == "justweights":
+        params_extracted = [p.cpu().detach().numpy().reshape(-1)  for name, p in model.named_parameters() if "bias" not in name]
+    elif whichLayer=="all":
+        params_extracted = [p.cpu().detach().numpy().reshape(-1) for p in model.parameters()]
+    else:
+        raise ValueError("please specify which layers to use!")
+    weight_stats = np.concatenate(np.array(list(map(get_layer_stats, params_extracted))), axis = 0)
+    res_modeltype = np.concatenate([[archType], weight_stats], axis = 0)
     # print("Model type: ", archType)
     return res_modeltype
-  
+
+def get_weights_firstlayer(model_filepath): 
+    """
+    :param model_filepath:
+    """
+    model = torch.load(model_filepath)
+    params = [p.cpu().detach().numpy() for name, p in model.named_parameters() if "bias" not in name]
+    input_size = params[0].shape[1]
+    firstLayer =  [np.sort(params[0][:,i]) for i in  range(input_size)]
+    firstLayer = np.concatenate(firstLayer)    
+    return firstLayer
+
+
+
 def get_quants(x, n):
     """
     :param x:
@@ -112,3 +149,25 @@ def get_quants(x, n):
     """
     q = np.linspace(0, 1, n)
     return np.quantile(x, q)
+
+
+def get_arch(model_filepath):
+    model = torch.load(model_filepath)
+
+    numparams = len([p for p in model.parameters()])
+    cls = str(type(model)).split(".")[1][:4] 
+    # import pdb; pdb.set_trace()
+    return cls
+
+
+def get_jac_feats(model_filepath, nsamples=1000, input_scale=1.0):
+    device= torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    model = torch.load(model_filepath)
+    model.parameters()
+    model.cuda()
+    model.train()
+    input_sz = model.parameters().__next__().shape[1]
+    inputs = input_scale*torch.randn([nsamples,1,input_sz],device=device)
+    jacobian = compute_jacobian(model, inputs)
+    return jacobian.mean(axis=1).reshape(-1)
+

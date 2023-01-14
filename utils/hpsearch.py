@@ -15,7 +15,6 @@ def hpsearch_max_depth(max_depth_options, results_dir = None, holdoutratio = 0.1
     output: returns optimal depth
     """
 
-    results_dir =[]
 
     x = []
     y = []

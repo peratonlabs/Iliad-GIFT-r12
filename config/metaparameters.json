@@ -1,7 +1,5 @@
-{
-	"train_nq": 25,
-	"train_C": 21,
-	"train_nsamples":10000,
+{	"train_C": 3,
+	"train_nsamples":200000,
 	"train_holdoutratio": 0.1
 }
 

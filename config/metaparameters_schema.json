@@ -1,31 +1,23 @@
 {
     "$schema": "http://json-schema.org/draft-07/schema#",
     "title": "PL-GIFT Algorithm Meta-Parameters",
-    "technique": "Jacobian Detector",
-    "technique_description": "Extracts model jacobian and trains a LogisticRegression classifier.",
-    "technique_changes": "Changed the classifier form RandomForest ot LogisticRegression; Added weight statistics",
-    "commit_id": "eec06ab865ef8ad363b182dd70eabc539ed7e05b",
+    "technique": "Jacobian Analysis Detector",
+    "technique_description": "Jacobian Analysis and LogisticRegression classifier.",
+    "technique_changes": " Combined Jacobian features with weight analysis features",
+    "commit_id": "657e3fe06d6c744a365e340a7ddf7fe975200204",
     "repo_name": "https://github.com/plgift/r12",
     "required": [],
     "additionalProperties": false,
     "type": "object",
     "properties": {
-        "train_nq": {
-            "description": "number or sequence of quantiles to compute",
+        "train_C": {
+            "description": "Inverse of regularization to use in the LogisticRegression.",
             "type": "integer",
-            "minimum": 4,
+            "minimum": 0.1,
             "maximum": 100,
-            "suggested_minimum": 18,
+            "suggested_minimum": 10,
             "suggested_maximum": 100
         },
-      "train_C": {
-          "description": "Inverse of regularization to use in the LogisticRegression.",
-          "type": "integer",
-          "minimum": 0.1,
-          "maximum": 100,
-          "suggested_minimum": 10,
-          "suggested_maximum": 100
-      },
       "train_nsamples": {
         "description": "The number of random input samples to use to generate the jacobian.",
         "type": "number",
