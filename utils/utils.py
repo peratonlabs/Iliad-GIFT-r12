@@ -139,7 +139,23 @@ def get_weights_firstlayer(model_filepath):
     firstLayer = np.concatenate(firstLayer)    
     return firstLayer
 
+def get_weights_firstlayer_and_lastlayer(model_filepath): 
+    """
+    :param model_filepath:
+    """
+    model = torch.load(model_filepath)
+    params = [p.cpu().detach().numpy() for name, p in model.named_parameters() if "bias" not in name]
+    input_size1 = params[0].shape[1]
+    
+    firstLayer =  [np.sort(params[0][:,i]) for i in  range(input_size1)]
+    firstLayer = np.concatenate(firstLayer)  
 
+    input_size2 = params[-1].shape[0]
+    lastLayer = [np.sort(params[-1][i,:]) for i in range(input_size2)]
+    lastLayer = np.concatenate(lastLayer)
+
+    feats = np.concatenate([firstLayer, lastLayer])
+    return feats
 
 def get_quants(x, n):
     """
@@ -171,3 +187,7 @@ def get_jac_feats(model_filepath, nsamples=1000, input_scale=1.0):
     jacobian = compute_jacobian(model, inputs)
     return jacobian.mean(axis=1).reshape(-1)
 
+def predict_proba_custom(score, threshold = 0.60):
+    predict_proba= lambda s:  1 if s > threshold else 0
+    predict_proba = np.vectorize(predict_proba)
+    return np.clip(predict_proba(score), 0.01, 0.99)
