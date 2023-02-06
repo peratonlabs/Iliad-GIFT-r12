@@ -213,7 +213,7 @@ if __name__ == "__main__":
         "--num_cv_trials",
         type=int,
         help="number of cross validation trials to run.",
-        default=2000
+        default=100
     )
     configure_parser.set_defaults(func=configure_mode)
 

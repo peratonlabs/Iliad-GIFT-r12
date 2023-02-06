@@ -134,9 +134,13 @@ def get_weights_firstlayer(model_filepath):
     """
     model = torch.load(model_filepath)
     params = [p.cpu().detach().numpy() for name, p in model.named_parameters() if "bias" not in name]
+    bias = [p.cpu().detach().numpy() for name, p in model.named_parameters() if "bias" in name]
     input_size = params[0].shape[1]
     firstLayer =  [np.sort(params[0][:,i]) for i in  range(input_size)]
     firstLayer = np.concatenate(firstLayer)    
+    bias_first = bias[0]
+    firstLayer = np.concatenate([firstLayer,bias_first ]) 
+
     return firstLayer
 
 def get_weights_firstlayer_and_lastlayer(model_filepath): 
@@ -145,14 +149,20 @@ def get_weights_firstlayer_and_lastlayer(model_filepath):
     """
     model = torch.load(model_filepath)
     params = [p.cpu().detach().numpy() for name, p in model.named_parameters() if "bias" not in name]
+    bias = [p.cpu().detach().numpy() for name, p in model.named_parameters() if "bias" in name]
     input_size1 = params[0].shape[1]
+    
     
     firstLayer =  [np.sort(params[0][:,i]) for i in  range(input_size1)]
     firstLayer = np.concatenate(firstLayer)  
+    bias_first = bias[0]
+    firstLayer = np.concatenate([firstLayer,bias_first ]) 
 
+    bias_last = bias[-1]
     input_size2 = params[-1].shape[0]
     lastLayer = [np.sort(params[-1][i,:]) for i in range(input_size2)]
     lastLayer = np.concatenate(lastLayer)
+    lastLayer = np.concatenate([lastLayer, bias_last])
 
     feats = np.concatenate([firstLayer, lastLayer])
     return feats
@@ -172,7 +182,6 @@ def get_arch(model_filepath):
 
     numparams = len([p for p in model.parameters()])
     cls = str(type(model)).split(".")[1][:4] 
-    # import pdb; pdb.set_trace()
     return cls
 
 
