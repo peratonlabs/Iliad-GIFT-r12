@@ -15,6 +15,11 @@ from sklearn.ensemble import GradientBoostingClassifier
 from utils import hpsearch
 
 
+
+logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] [%(filename)s:%(lineno)d] %(message)s",
+    )
 class JACDetector(AbstractDetector):
     def __init__(self, metaparameter_filepath, learned_parameters_dirpath, scale_parameters_filepath, arg_dict):
         """Detector initialization function.
@@ -24,6 +29,7 @@ class JACDetector(AbstractDetector):
             learned_parameters_dirpath: str - Path to the learned parameters directory.
             scale_parameters_filepath: str - File path to the scale_parameters file.
         """
+        logging.info("Initializing the detector class")
      
         self.arg_dict = arg_dict
         self.metaparameter_filepath = metaparameter_filepath
@@ -34,6 +40,7 @@ class JACDetector(AbstractDetector):
 
 
     def write_metaparameters(self, metaparameters):
+        logging.info("Writing metaparameter to file")
         with open(self.learned_parameters_dirpath, "w") as fp:
             json.dump(metaparameters, fp)
 
@@ -49,6 +56,7 @@ class JACDetector(AbstractDetector):
         file (in the learned_parameters folder) when optimal meta-parameters are found.
 
         """
+        logging.info("Configuring hyperparameters")
 
         scratch_dirpath = self.arg_dict["scratch_dirpath"]
         results_dir = os.path.join(scratch_dirpath, 'jac_results')
@@ -84,8 +92,10 @@ class JACDetector(AbstractDetector):
         metaparameters = json.load(open(self.metaparameter_filepath, "r"))
         basepath = self.arg_dict["gift_basepath"]
         feats_jac = utils.get_jac_feats(model_filepath, nsamples=metaparameters["train_nsamples"])
-        feats_ws  = utils.get_weights_firstlayer(model_filepath)
-        feats = np.concatenate([feats_jac,feats_ws], axis = 0)
+        feats_ws  = utils.get_all_weights(model_filepath)
+        # feats_ws  = utils.get_weights_firstlayer_and_lastlayer(model_filepath)
+        # feats = np.concatenate([feats_ws, feats_jac], axis = 0)
+        feats = feats_ws
         rf_path = os.path.join(self.learned_parameters_dirpath, "cv_rf.joblib") 
         rf_path = os.path.join(basepath, rf_path)
         ir_path = os.path.join(self.learned_parameters_dirpath, "cv_ir.joblib") 
@@ -94,6 +104,7 @@ class JACDetector(AbstractDetector):
         rf_model = load(rf_path)
         ir_model = load(ir_path)
         pv = rf_model.predict_proba([feats])[:, 1]
+
         prob = ir_model.transform(pv)
         return prob
 
@@ -104,7 +115,7 @@ class JACDetector(AbstractDetector):
             Args:
                 models_dirpath: str - Path to the list of model to use for training
         """
-
+        logging.info("Runing manual configuration")
         # Create the learned parameter folder if needed
         if not os.path.exists(self.learned_parameters_dirpath):
             os.makedirs(self.learned_parameters_dirpath)
@@ -146,10 +157,11 @@ class JACDetector(AbstractDetector):
             if model_result is None:
                 print('getting feats from', model_id)
                 model_filepath = os.path.join(curr_model_dirpath, 'model.pt')
-                feats_jac = utils.get_jac_feats(model_filepath, nsamples=metaparameters["train_nsamples"])
-                feats_ws  = utils.get_weights_firstlayer(model_filepath)
+                # feats_jac = utils.get_jac_feats(model_filepath, nsamples=metaparameters["train_nsamples"])
+                feats_ws  = utils.get_all_weights(model_filepath)
                 cls = utils.get_class_r12(os.path.join(curr_model_dirpath, 'config.json'))
-                feats = np.concatenate([feats_jac,feats_ws], axis = 0)
+                # feats = np.concatenate([feats_ws, feats_jac], axis = 0)
+                feats = feats_ws
         
                 model_result = {"jac_dets": jac_dets, 'cls': cls, 'features': feats}
                 with open(res_path, "wb") as f:
@@ -176,8 +188,6 @@ class JACDetector(AbstractDetector):
             ytr = y[ind[:split]]
             yv = y[ind[split:]]
 
-            # model = RandomForestClassifier(n_estimators=n_estimators, max_depth=max_depth)
-            # model = RandomForestClassifier(n_estimators=n_estimators, criterion=criterion)
             model = LogisticRegression(max_iter=1000, C=C)
             model.fit(xtr, ytr)
             pv = model.predict_proba(xv)
@@ -188,11 +198,14 @@ class JACDetector(AbstractDetector):
                 print("auc: ",roc_auc_score(yv, pv), " ce: ",log_loss(yv, pv))
                 vroc = roc_auc_score(yv, pv)
                 rocList.append(vroc)
+                # rf_scores.append(pv)
+                # truths.append(yv)
                 #only select good sample for clibrating Isotonic 
-                if vroc>= vrocThreshold:
-                    rf_scores.append(pv)
-                    truths.append(yv)
-    
+                # if vroc>= vrocThreshold:
+                # pv = np.clip(pv, 0.40, 0.95)
+                rf_scores.append(pv)
+                truths.append(yv)
+        
             except:
                 print('AUC error (probably due to class balance)')
         print('avg auc: ', np.mean(rocList))
@@ -203,7 +216,7 @@ class JACDetector(AbstractDetector):
         truths = np.array(truths)
         
         ISOce_scores = []
-        for _ in range(100):
+        for _ in range(10):
             ind = np.arange(len(rf_scores))
             np.random.shuffle(ind)
             split = round(len(rf_scores) * (1-holdoutratio))
@@ -217,12 +230,11 @@ class JACDetector(AbstractDetector):
             ir_model = IsotonicRegression(out_of_bounds='clip')
             ir_model.fit(ptr, ytr)
             p2tst = ir_model.transform(ptst)
-            p2tst = np.clip(p2tst, 0.01, 0.99)
+            # p2tst = np.clip(p2tst, 0.34, 0.99)
             ISOce_scores.append(log_loss(ytst, p2tst))
         print('post-cal ce (ISO): ', np.mean(ISOce_scores))
 
         
-        # rf_model = RandomForestClassifier(n_estimators=n_estimators, criterion=criterion)
         rf_model = LogisticRegression(max_iter=1000, C=C)
         rf_model.fit(x, y)
         rf_scores = np.concatenate(rf_scores)
@@ -231,6 +243,7 @@ class JACDetector(AbstractDetector):
         ir_model.fit(rf_scores, rf_sample_y)
         dump(rf_model, os.path.join(self.arg_dict['learned_parameters_dirpath'], 'cv_rf.joblib'))
         dump(ir_model, os.path.join(self.arg_dict['learned_parameters_dirpath'], 'cv_ir.joblib'))
+        logging.info("Training Done!")
 
 
 

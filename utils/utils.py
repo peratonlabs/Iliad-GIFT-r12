@@ -1,6 +1,7 @@
 import json
 import torch
 import numpy as np
+import scipy as sc
 
 
 
@@ -65,7 +66,7 @@ def norm_feat(feat, kind= ""):
 
 
 def get_layer_stats(x):
-    return [np.mean(x), np.std(x), np.min(x), np.max(x)]
+    return [np.mean(x), np.std(x), np.min(x), np.max(x), sc.stats.skew(x)]
 
 def get_layer_stats_vectorized_mean(model_filepath, whichLayer = "firstLast"): 
     model = torch.load(model_filepath)
@@ -167,6 +168,27 @@ def get_weights_firstlayer_and_lastlayer(model_filepath):
     feats = np.concatenate([firstLayer, lastLayer])
     return feats
 
+
+def get_all_weights(model_filepath, sort_first_layer=False): 
+    """
+    :param model_filepath:
+    """
+    model = torch.load(model_filepath)
+    if sort_first_layer:
+        sortWeight = lambda params:  [np.sort(params[:,i]) for i in  range(params.shape[1])]
+        params = [p.cpu().detach().numpy().T for name, p in model.named_parameters() if "bias" not in name]
+        params[0] = np.array(sortWeight(params[0])).T
+    else:
+        params = [p.cpu().detach().numpy().T for name, p in model.named_parameters() if "bias" not in name]
+
+    feats = np.linalg.multi_dot(params)
+    feats = feats.reshape(-1)
+    stats_feats = get_layer_stats(feats)
+    feats =  np.concatenate([feats, stats_feats], axis = 0)
+    # import pdb; pdb.set_trace()
+    
+    return feats/feats.std()
+
 def get_quants(x, n):
     """
     :param x:
@@ -194,9 +216,11 @@ def get_jac_feats(model_filepath, nsamples=1000, input_scale=1.0):
     input_sz = model.parameters().__next__().shape[1]
     inputs = input_scale*torch.randn([nsamples,1,input_sz],device=device)
     jacobian = compute_jacobian(model, inputs)
-    return jacobian.mean(axis=1).reshape(-1)
+    jacobian = jacobian.mean(axis=1).reshape(-1)
+    return jacobian
 
-def predict_proba_custom(score, threshold = 0.60):
+
+def predict_proba_custom(score, threshold = 0.60, clip_lo=0.01, clip_hi=0.99):
     predict_proba= lambda s:  1 if s > threshold else 0
     predict_proba = np.vectorize(predict_proba)
-    return np.clip(predict_proba(score), 0.01, 0.99)
+    return np.clip(predict_proba(score), clip_lo, clip_hi)
