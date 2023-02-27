@@ -7,6 +7,7 @@ From: pytorch/pytorch:1.13.1-cuda11.6-cudnn8-runtime
     ./utils /gift/
     ./detection /gift/
     ./config /gift/
+    ./reference_models /gift/
     ./config/metaparameters.json /
     ./config/metaparameters_schema.json /
     ./learned_parameters /

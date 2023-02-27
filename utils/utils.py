@@ -1,7 +1,9 @@
+import os
 import json
 import torch
 import numpy as np
 import scipy as sc
+from numpy import linalg 
 
 
 
@@ -129,20 +131,32 @@ def get_layer_weights_vectorized(model_filepath, whichLayer = "firstLast"):
     # print("Model type: ", archType)
     return res_modeltype
 
-def get_weights_firstlayer(model_filepath): 
+def get_weights_firstlayer(model_filepath, basepath="./"): 
     """
     :param model_filepath:
     """
     model = torch.load(model_filepath)
+
+    numparams = len([p for p in model.parameters()])
+    ref_path=os.join(basepath,"reference_models")
+    ref_filepath = ref_path + "/"+str(type(model)).split(".")[1].split("'")[0] + "_"+str(numparams) +".pt"
+    ref_model  = torch.load(ref_filepath)
+    
+
     params = [p.cpu().detach().numpy() for name, p in model.named_parameters() if "bias" not in name]
-    bias = [p.cpu().detach().numpy() for name, p in model.named_parameters() if "bias" in name]
+    ref_params = [p.cpu().detach().numpy() for name, p in ref_model.named_parameters() if "bias" not in name]
     input_size = params[0].shape[1]
     firstLayer =  [np.sort(params[0][:,i]) for i in  range(input_size)]
-    firstLayer = np.concatenate(firstLayer)    
-    bias_first = bias[0]
-    firstLayer = np.concatenate([firstLayer,bias_first ]) 
+    firstLayer = np.concatenate(firstLayer)   
 
-    return firstLayer
+    ref_firstLayer =  [np.sort(ref_params[0][:,i]) for i in  range(input_size)]
+    ref_firstLayer = np.concatenate(ref_firstLayer) 
+    if firstLayer.all() != ref_firstLayer.all():
+        delta =   firstLayer - ref_firstLayer
+    else:
+        delta = firstLayer
+
+    return delta
 
 def get_weights_firstlayer_and_lastlayer(model_filepath): 
     """
@@ -189,6 +203,34 @@ def get_all_weights(model_filepath, sort_first_layer=False):
     
     return feats/feats.std()
 
+
+
+
+
+
+def get_all_weights_with_reference(model_filepath, basepath = "./"): 
+    """
+    :param model_filepath:
+    :param ref_path:
+    """
+    model = torch.load(model_filepath)
+    numparams = len([p for p in model.parameters()])
+    ref_path=os.path.join(basepath,"reference_models")
+
+    ref_filepath = ref_path + "/"+str(type(model)).split(".")[1].split("'")[0] + "_"+str(numparams) +".pt"
+    ref_model  = torch.load(ref_filepath)
+    
+
+    mod_params = [p.cpu().detach().numpy().T for name, p in model.named_parameters() if "bias" not in name]
+    ref_params = [p.cpu().detach().numpy().T for name, p in ref_model.named_parameters() if "bias" not in name]
+    params = [p1-p2 if p1.all()!=p1.all() else p1 for p1, p2 in zip(mod_params, ref_params) ]
+
+    feats  = np.linalg.multi_dot(params)
+    feats = feats.reshape(-1)
+    
+    return feats/feats.std()
+
+    
 def get_quants(x, n):
     """
     :param x:
@@ -217,7 +259,35 @@ def get_jac_feats(model_filepath, nsamples=1000, input_scale=1.0):
     inputs = input_scale*torch.randn([nsamples,1,input_sz],device=device)
     jacobian = compute_jacobian(model, inputs)
     jacobian = jacobian.mean(axis=1).reshape(-1)
-    return jacobian
+    # return jacobian/linalg.norm(jacobian, ord=2)
+    return jacobian/jacobian.std()
+
+def get_jac_feats_with_reference(model_filepath, nsamples=1000, input_scale=1.0,basepath="./"):
+    device= torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    model = torch.load(model_filepath)
+    model.parameters()
+    model.cuda()
+    model.train()
+    input_sz = model.parameters().__next__().shape[1]
+    inputs = input_scale*torch.randn([nsamples,1,input_sz],device=device)
+    jacobian = compute_jacobian(model, inputs)
+    jacobian = jacobian.mean(axis=1).reshape(-1)
+
+    numparams = len([p for p in model.parameters()])
+    ref_path=os.path.join(basepath,"reference_models")
+
+
+    ref_filepath = ref_path + "/"+str(type(model)).split(".")[1].split("'")[0] + "_"+str(numparams) +".pt"
+    ref_model  = torch.load(ref_filepath)
+    ref_model.parameters()
+    ref_model.cuda()
+    ref_model.train()
+    input_sz = model.parameters().__next__().shape[1]
+    inputs = input_scale*torch.randn([nsamples,1,input_sz],device=device)
+    jacobian2 = compute_jacobian(ref_model, inputs)
+    jacobian2 = jacobian2.mean(axis=1).reshape(-1)
+    delta = jacobian-jacobian2
+    return delta
 
 
 def predict_proba_custom(score, threshold = 0.60, clip_lo=0.01, clip_hi=0.99):

@@ -1,6 +1,6 @@
-{	"train_C": 10,
+{	"train_C": 2,
 	"train_nsamples":10000,
-	"train_holdoutratio": 0.1
+	"train_holdoutratio": 0.2
 }
 
 

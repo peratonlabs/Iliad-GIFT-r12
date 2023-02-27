@@ -92,10 +92,8 @@ class JACDetector(AbstractDetector):
         metaparameters = json.load(open(self.metaparameter_filepath, "r"))
         basepath = self.arg_dict["gift_basepath"]
         feats_jac = utils.get_jac_feats(model_filepath, nsamples=metaparameters["train_nsamples"])
-        feats_ws  = utils.get_all_weights(model_filepath)
-        # feats_ws  = utils.get_weights_firstlayer_and_lastlayer(model_filepath)
-        # feats = np.concatenate([feats_ws, feats_jac], axis = 0)
-        feats = feats_ws
+        feats_ws  = utils.get_all_weights_with_reference(model_filepath, basepath)
+        feats = np.concatenate([feats_ws, feats_jac], axis = 0)
         rf_path = os.path.join(self.learned_parameters_dirpath, "cv_rf.joblib") 
         rf_path = os.path.join(basepath, rf_path)
         ir_path = os.path.join(self.learned_parameters_dirpath, "cv_ir.joblib") 
@@ -144,7 +142,7 @@ class JACDetector(AbstractDetector):
         os.makedirs(results_dir, exist_ok=True)
 
         for model_id in modelList:
-            # print("Current model: ", model_id)
+
             model_result = None
             curr_model_dirpath = os.path.join(models_dirpath, model_id)
 
@@ -157,16 +155,15 @@ class JACDetector(AbstractDetector):
             if model_result is None:
                 print('getting feats from', model_id)
                 model_filepath = os.path.join(curr_model_dirpath, 'model.pt')
-                # feats_jac = utils.get_jac_feats(model_filepath, nsamples=metaparameters["train_nsamples"])
-                feats_ws  = utils.get_all_weights(model_filepath)
+                feats_jac = utils.get_jac_feats(model_filepath, nsamples=metaparameters["train_nsamples"])
+                feats_ws = utils.get_all_weights_with_reference(model_filepath)
                 cls = utils.get_class_r12(os.path.join(curr_model_dirpath, 'config.json'))
-                # feats = np.concatenate([feats_ws, feats_jac], axis = 0)
-                feats = feats_ws
+                feats = np.concatenate([feats_ws, feats_jac], axis = 0)
         
                 model_result = {"jac_dets": jac_dets, 'cls': cls, 'features': feats}
                 with open(res_path, "wb") as f:
                     pickle.dump(model_result, f)
-
+            # print(model_result["features"])
             x.append(model_result["features"])
             y.append(model_result["cls"])
 
@@ -202,7 +199,7 @@ class JACDetector(AbstractDetector):
                 # truths.append(yv)
                 #only select good sample for clibrating Isotonic 
                 # if vroc>= vrocThreshold:
-                # pv = np.clip(pv, 0.40, 0.95)
+                #     pv = np.clip(pv, 0.35, 0.95)
                 rf_scores.append(pv)
                 truths.append(yv)
         
