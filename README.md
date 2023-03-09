@@ -9,7 +9,7 @@ Contact: thuster@peraton.com
 ## Env Setup
 
 ```
-conda env create -f environment.yml
+conda env create --name trojai12 -f environment.yml
 conda activate trojai12
 ```
 
