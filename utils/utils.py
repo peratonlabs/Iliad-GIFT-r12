@@ -5,6 +5,8 @@ import numpy as np
 import scipy as sc
 from numpy import linalg 
 
+from sklearn.preprocessing import StandardScaler
+from numpy.linalg import eig
 
 
 def read_json(truth_fn):
@@ -137,26 +139,13 @@ def get_weights_firstlayer(model_filepath, basepath="./"):
     """
     model = torch.load(model_filepath)
 
-    numparams = len([p for p in model.parameters()])
-    ref_path=os.join(basepath,"reference_models")
-    ref_filepath = ref_path + "/"+str(type(model)).split(".")[1].split("'")[0] + "_"+str(numparams) +".pt"
-    ref_model  = torch.load(ref_filepath)
-    
-
     params = [p.cpu().detach().numpy() for name, p in model.named_parameters() if "bias" not in name]
-    ref_params = [p.cpu().detach().numpy() for name, p in ref_model.named_parameters() if "bias" not in name]
     input_size = params[0].shape[1]
     firstLayer =  [np.sort(params[0][:,i]) for i in  range(input_size)]
-    firstLayer = np.concatenate(firstLayer)   
-
-    ref_firstLayer =  [np.sort(ref_params[0][:,i]) for i in  range(input_size)]
-    ref_firstLayer = np.concatenate(ref_firstLayer) 
-    if firstLayer.all() != ref_firstLayer.all():
-        delta =   firstLayer - ref_firstLayer
-    else:
-        delta = firstLayer
-
-    return delta
+    firstLayer = np.concatenate(firstLayer)
+    # firstLayer =  params[0].reshape(-1)
+    feat = firstLayer.reshape(-1)
+    return feat
 
 def get_weights_firstlayer_and_lastlayer(model_filepath): 
     """
@@ -200,7 +189,7 @@ def get_all_weights(model_filepath, sort_first_layer=False):
     stats_feats = get_layer_stats(feats)
     feats =  np.concatenate([feats, stats_feats], axis = 0)
     # import pdb; pdb.set_trace()
-    
+
     return feats/feats.std()
 
 
@@ -258,9 +247,16 @@ def get_jac_feats(model_filepath, nsamples=1000, input_scale=1.0):
     input_sz = model.parameters().__next__().shape[1]
     inputs = input_scale*torch.randn([nsamples,1,input_sz],device=device)
     jacobian = compute_jacobian(model, inputs)
-    jacobian = jacobian.mean(axis=1).reshape(-1)
-    # return jacobian/linalg.norm(jacobian, ord=2)
-    return jacobian/jacobian.std()
+    # norm_const = linalg.norm(jacobian)
+    # jacobian = jacobian.mean(axis=1).reshape(-1)
+    # return jacobian/jacobian.std()
+    # return jacobian
+    jacobian = jacobian.mean(axis=1)
+    dim_size = jacobian.shape[0]
+
+    feat = np.concatenate([(jacobian[i]/jacobian[i].std()).reshape(-1) for i in range(dim_size)])
+
+    return feat
 
 def get_jac_feats_with_reference(model_filepath, nsamples=1000, input_scale=1.0,basepath="./"):
     device= torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -290,7 +286,48 @@ def get_jac_feats_with_reference(model_filepath, nsamples=1000, input_scale=1.0,
     return delta
 
 
+
+def get_data_cyber(examples_dirpath, scale_params_path):
+    device= torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+     # Setup scaler
+    scaler = StandardScaler()
+
+    scale_params = np.load(scale_params_path)
+
+    scaler.mean_ = scale_params[0]
+    scaler.scale_ = scale_params[1]
+    X = []
+    for examples_dir_entry in os.scandir(examples_dirpath):
+        if examples_dir_entry.is_file() and examples_dir_entry.name.endswith(".npy"):
+            feature_vector = np.load(examples_dir_entry.path).reshape(1, -1)
+            feature_vector = torch.from_numpy(scaler.transform(feature_vector.astype(float))).float()
+            X.append(feature_vector)
+    inputs = torch.tensor(np.stack(X), device = device)
+    return inputs
+
+def get_jac_feats_with_real_inputs(model_filepath, examples_dirpath, scale_params_path):
+    model = torch.load(model_filepath)
+    model.parameters()
+    model.cuda()
+    model.train()
+    
+    inputs =get_data_cyber(examples_dirpath, scale_params_path)
+    jacobian = compute_jacobian(model, inputs)
+
+    jacobian = jacobian.mean(axis=1)
+    dim_size = jacobian.shape[0]
+
+    feat = np.concatenate([(jacobian[i]/jacobian[i].std()).reshape(-1) for i in range(dim_size)])
+
+    return feat
+
+
+
 def predict_proba_custom(score, threshold = 0.60, clip_lo=0.01, clip_hi=0.99):
     predict_proba= lambda s:  1 if s > threshold else 0
     predict_proba = np.vectorize(predict_proba)
     return np.clip(predict_proba(score), clip_lo, clip_hi)
+
+
+
+

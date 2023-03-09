@@ -12,6 +12,10 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import roc_auc_score, log_loss
 from sklearn.isotonic import IsotonicRegression
 from sklearn.ensemble import GradientBoostingClassifier
+
+from sklearn.pipeline import make_pipeline
+from sklearn.preprocessing import StandardScaler
+from sklearn.svm import SVC
 from utils import hpsearch
 
 
@@ -33,7 +37,7 @@ class JACDetector(AbstractDetector):
      
         self.arg_dict = arg_dict
         self.metaparameter_filepath = metaparameter_filepath
-        # self.scale_parameters_filepath = scale_parameters_filepath
+        self.scale_parameters_filepath = scale_parameters_filepath
         self.learned_parameters_dirpath = learned_parameters_dirpath
         self.default_metaparameters = json.load(open(metaparameter_filepath, "r"))
 
@@ -91,9 +95,10 @@ class JACDetector(AbstractDetector):
     ):
         metaparameters = json.load(open(self.metaparameter_filepath, "r"))
         basepath = self.arg_dict["gift_basepath"]
-        feats_jac = utils.get_jac_feats(model_filepath, nsamples=metaparameters["train_nsamples"])
-        feats_ws  = utils.get_all_weights_with_reference(model_filepath, basepath)
-        feats = np.concatenate([feats_ws, feats_jac], axis = 0)
+        feats_jac_rand = utils.get_jac_feats(model_filepath, nsamples=metaparameters["train_nsamples"])
+        feats_ws  = utils.get_all_weights(model_filepath, basepath)
+        feats_jac_real = utils.get_jac_feats_with_real_inputs(model_filepath,examples_dirpath, scale_params_path =self.scale_parameters_filepath)
+        feats = np.concatenate([feats_jac_real, feats_jac_rand, feats_ws], axis = 0)
         rf_path = os.path.join(self.learned_parameters_dirpath, "cv_rf.joblib") 
         rf_path = os.path.join(basepath, rf_path)
         ir_path = os.path.join(self.learned_parameters_dirpath, "cv_ir.joblib") 
@@ -146,6 +151,7 @@ class JACDetector(AbstractDetector):
             model_result = None
             curr_model_dirpath = os.path.join(models_dirpath, model_id)
 
+            example_dirpath = os.path.join(curr_model_dirpath, "clean-example-data")
             res_path = os.path.join(results_dir, model_id + '.p')
             if os.path.exists(res_path):
                 with open(res_path, 'rb') as f:
@@ -155,15 +161,15 @@ class JACDetector(AbstractDetector):
             if model_result is None:
                 print('getting feats from', model_id)
                 model_filepath = os.path.join(curr_model_dirpath, 'model.pt')
-                feats_jac = utils.get_jac_feats(model_filepath, nsamples=metaparameters["train_nsamples"])
-                feats_ws = utils.get_all_weights_with_reference(model_filepath)
+                feats_jac_rand = utils.get_jac_feats(model_filepath, nsamples=metaparameters["train_nsamples"])
+                feats_jac_real = utils.get_jac_feats_with_real_inputs(model_filepath,example_dirpath, scale_params_path =self.scale_parameters_filepath)
+                feats_ws = utils.get_all_weights(model_filepath)
                 cls = utils.get_class_r12(os.path.join(curr_model_dirpath, 'config.json'))
-                feats = np.concatenate([feats_ws, feats_jac], axis = 0)
-        
+                feats = np.concatenate([feats_jac_real, feats_jac_rand, feats_ws], axis = 0)
+
                 model_result = {"jac_dets": jac_dets, 'cls': cls, 'features': feats}
                 with open(res_path, "wb") as f:
                     pickle.dump(model_result, f)
-            # print(model_result["features"])
             x.append(model_result["features"])
             y.append(model_result["cls"])
 
@@ -185,7 +191,9 @@ class JACDetector(AbstractDetector):
             ytr = y[ind[:split]]
             yv = y[ind[split:]]
 
-            model = LogisticRegression(max_iter=1000, C=C)
+            # model = LogisticRegression(max_iter=1000, C=C)
+            # model = RandomForestClassifier(n_estimators=1000)
+            model = make_pipeline(StandardScaler(), SVC(gamma='auto', probability=True))
             model.fit(xtr, ytr)
             pv = model.predict_proba(xv)
             pv = pv[:, 1]
@@ -194,12 +202,7 @@ class JACDetector(AbstractDetector):
             try:
                 print("auc: ",roc_auc_score(yv, pv), " ce: ",log_loss(yv, pv))
                 vroc = roc_auc_score(yv, pv)
-                rocList.append(vroc)
-                # rf_scores.append(pv)
-                # truths.append(yv)
-                #only select good sample for clibrating Isotonic 
-                # if vroc>= vrocThreshold:
-                #     pv = np.clip(pv, 0.35, 0.95)
+                rocList.append(vroc)                      
                 rf_scores.append(pv)
                 truths.append(yv)
         
@@ -227,12 +230,13 @@ class JACDetector(AbstractDetector):
             ir_model = IsotonicRegression(out_of_bounds='clip')
             ir_model.fit(ptr, ytr)
             p2tst = ir_model.transform(ptst)
-            # p2tst = np.clip(p2tst, 0.34, 0.99)
             ISOce_scores.append(log_loss(ytst, p2tst))
         print('post-cal ce (ISO): ', np.mean(ISOce_scores))
 
         
-        rf_model = LogisticRegression(max_iter=1000, C=C)
+        # rf_model = LogisticRegression(max_iter=1000, C=C)
+        # rf_model = RandomForestClassifier(n_estimators=1000)
+        rf_model = make_pipeline(StandardScaler(), SVC(gamma='auto', probability=True))
         rf_model.fit(x, y)
         rf_scores = np.concatenate(rf_scores)
         rf_sample_y = np.concatenate(truths)
