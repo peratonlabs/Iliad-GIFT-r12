@@ -97,7 +97,7 @@ class JACDetector(AbstractDetector):
         basepath = self.arg_dict["gift_basepath"]
         feats_jac_rand = utils.get_jac_feats(model_filepath, nsamples=metaparameters["train_nsamples"])
         feats_ws  = utils.get_all_weights(model_filepath, basepath)
-        feats_jac_real = utils.get_jac_feats_with_real_inputs(model_filepath,examples_dirpath, scale_params_path =self.scale_parameters_filepath)
+        feats_jac_real = utils.get_jac_feats_with_real_inputs(model_filepath,examples_dirpath, basepath)
         feats = np.concatenate([feats_jac_real, feats_jac_rand, feats_ws], axis = 0)
         rf_path = os.path.join(self.learned_parameters_dirpath, "cv_rf.joblib") 
         rf_path = os.path.join(basepath, rf_path)
@@ -142,6 +142,7 @@ class JACDetector(AbstractDetector):
 
         scratch_dirpath = self.arg_dict["scratch_dirpath"]
         holdoutratio = metaparameters["train_holdoutratio"]
+        basepath = self.arg_dict["gift_basepath"]
 
         results_dir = os.path.join(scratch_dirpath, 'jac_results')
         os.makedirs(results_dir, exist_ok=True)
@@ -162,7 +163,7 @@ class JACDetector(AbstractDetector):
                 print('getting feats from', model_id)
                 model_filepath = os.path.join(curr_model_dirpath, 'model.pt')
                 feats_jac_rand = utils.get_jac_feats(model_filepath, nsamples=metaparameters["train_nsamples"])
-                feats_jac_real = utils.get_jac_feats_with_real_inputs(model_filepath,example_dirpath, scale_params_path =self.scale_parameters_filepath)
+                feats_jac_real = utils.get_jac_feats_with_real_inputs(model_filepath,example_dirpath, basepath)
                 feats_ws = utils.get_all_weights(model_filepath)
                 cls = utils.get_class_r12(os.path.join(curr_model_dirpath, 'config.json'))
                 feats = np.concatenate([feats_jac_real, feats_jac_rand, feats_ws], axis = 0)

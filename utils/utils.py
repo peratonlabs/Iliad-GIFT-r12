@@ -287,17 +287,18 @@ def get_jac_feats_with_reference(model_filepath, nsamples=1000, input_scale=1.0,
 
 
 
-def get_data_cyber(examples_dirpath, scale_params_path):
+def get_data_cyber(examples_dirpath, basepath = "./"):
     device= torch.device('cuda' if torch.cuda.is_available() else 'cpu')
      # Setup scaler
     scaler = StandardScaler()
-
+    scale_params_path = os.path.join(basepath,"scale_params.npy")
     scale_params = np.load(scale_params_path)
 
     scaler.mean_ = scale_params[0]
     scaler.scale_ = scale_params[1]
     X = []
     for examples_dir_entry in os.scandir(examples_dirpath):
+    
         if examples_dir_entry.is_file() and examples_dir_entry.name.endswith(".npy"):
             feature_vector = np.load(examples_dir_entry.path).reshape(1, -1)
             feature_vector = torch.from_numpy(scaler.transform(feature_vector.astype(float))).float()

@@ -9,7 +9,7 @@ Contact: thuster@peraton.com
 ## Env Setup
 
 ```
-conda env create -f environment_trojai12.yml
+conda env create -f environment.yml
 conda activate trojai12
 ```
 
@@ -21,7 +21,7 @@ python entrypoint.py infer --model_filepath ./data/cyber-pdf-dec2022-train/model
 ```
 
 ## Run Calibration
-Calibration on round 12 models:
+Calibration on round 12 models locally:
 ```
-python entrypoint.py configure 
+python entrypoint.py configure --configure_models_dirpath ./data/cyber-pdf-dec2022-train/models --gift_basepath ./
 ```

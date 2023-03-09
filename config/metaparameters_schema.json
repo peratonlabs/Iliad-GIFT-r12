@@ -4,7 +4,7 @@
     "technique": "Jacobian Analysis Detector",
     "technique_description": "Jacobian Analysis +  weight analysis",
     "technique_changes": "Switched the classifier to SVM; Added real model inputs to the jacobian analysis instead of only using synthetic input",
-    "commit_id": "5d320f9bfab7f03597759cbddadee066055be6ef",
+    "commit_id": "9f87d1f67494548dcaa9856ec6d71ad71c612af7",
     "repo_name": "https://github.com/plgift/r12",
     "required": [],
     "additionalProperties": false,
